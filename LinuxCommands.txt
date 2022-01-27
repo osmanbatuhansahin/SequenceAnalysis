@@ -1,0 +1,119 @@
+#Trimming
+flexbar -q TAIL -qf i1.8  --adapters trimrefs/illumina_multiplex.fa --threads 4 --zip-output GZ --reads srrdata/sra/SRR1105572_1.fastq --reads2 srrdata/sra/SRR1105572_2.fastq --target trim2/SRR1105572
+
+#Alignment
+hisat2 -p 8 --rg-id=SRR1105571 --rg SM:PALMITATE --rg LB:SRR1105571-PALMITATE --summary-file SRR1105571.out --rg PL:ILLUMINA -x refs/genome_snp_tran --dta --rna-strandness RF -1 trim2/SRR1105571_1.fastq.gz -2 trim2/SRR1105571_2.fastq.gz -S align/SRR1105571.sam
+
+#Human genome
+wget --content-disposition https://cloud.biohpc.swmed.edu/index.php/s/grch38_snp_tran/download
+
+#sam to bam convertion
+samtools sort -@ 8 -o SRR1105566.bam SRR1105566.sam
+
+#For merging “control” bam files to a single file
+java -Xmx2g -jar $RNA_HOME/student_tools/picard.jar MergeSamFiles OUTPUT=control.bam INPUT=SRR1105566.bam INPUT=SRR1105568.bam INPUT=SRR1105570.bam INPUT=SRR1105572.bam INPUT=SRR1105574.bam
+
+#Expression
+stringtie -p 8 -G ../../../refs/Homo_sapiens.GRCh38.99.gtf -e -B -o SRR1105566/transcripts.gtf -A SRR1105566/gene_abundances.tsv ../../../align/SRR1105566.bam
+
+#I created tidy expression matrix files for the StringTie results
+wget https://raw.githubusercontent.com/griffithlab/rnaseq_tutorial/master/scripts/stringtie_expression_matrix.pl
+./stringtie_expression_matrix.pl --expression_metric=Coverage --result_dirs='SRR1105566,SRR1105567,SRR1105568,SRR1105569,SRR1105570,SRR1105571,SRR1105572,SRR1105573,SRR1105574,SRR1105575' --transcript_matrix_file=transcript_coverage_all_samples.tsv --gene_matrix_file=gene_coverage_all_samples.tsv
+./stringtie_expression_matrix.pl --expression_metric=TPM --result_dirs='SRR1105566,SRR1105567,SRR1105568,SRR1105569,SRR1105570,SRR1105571,SRR1105572,SRR1105573,SRR1105574,SRR1105575' --transcript_matrix_file=transcript_tpm_all_samples.tsv --gene_matrix_file=gene_tpm_all_samples.tsv
+./stringtie_expression_matrix.pl --expression_metric=FPKM --result_dirs='SRR1105566,SRR1105567,SRR1105568,SRR1105569,SRR1105570,SRR1105571,SRR1105572,SRR1105573,SRR1105574,SRR1105575' --transcript_matrix_file=transcript_fpkm_all_samples.tsv --gene_matrix_file=gene_fpkm_all_samples.tsv
+
+#Htseq-count
+htseq-count --format bam --order pos --mode intersection-strict --stranded reverse --minaqual 1 --type exon --idattr gene_id ../../align/SRR1105566.bam ../../refs/Homo_sapiens.GRCh38.99.gtf > SRR1105566_gene.tsv
+
+#gtf file
+http://ftp.ensembl.org/pub/release-99/gtf/homo_sapiens/Homo_sapiens.GRCh38.99.gtf.gz
+
+
+echo "GeneID SRR1105566 SRR1105567 SRR1105568 SRR1105569 SRR1105570 SRR1105571 SRR1105572 SRR1105573 SRR1105574 SRR1105575" > header.txt
+cat header.txt gene_read_counts_table_all.tsv | grep -v "_" | perl -ne 'chomp $; $_ =~ s/\s+/\t/g; print "$_\n"' > gene_read_counts_table_all_final.tsv
+
+#Differantial Expression
+#Creatng csv file
+printf "\"ids\",\"type\",\"path\"\n\"control1\",\"control\",\"../../../expression/stringtie/ref_only/control1\"\n\"control2\",\"control\",\"../../../expression/stringtie/ref_only/control2\"\n\"control3\",\"control\",\"../../../expression/stringtie/ref_only/control3\"\n\"control4\",\"control\",\"../../../expression/stringtie/ref_only/control4\"\n\"control5\",\"control\",\"../../../expression/stringtie/ref_only/control5\"\n\"palmitate1\",\"palmitate\",\"../../../expression/stringtie/ref_only/palmitate1\"\n\"palmitate2\",\"palmitate\",\"../../../expression/stringtie/ref_only/palmitate1\"\n\"palmitate2\",\"palmitate\",\"../../../expression/stringtie/ref_only/palmitate2\"\n\"palmitate3\",\"palmitate\",\"../../../expression/stringtie/ref_only/palmitate3\"\n\"palmitate4\",\"palmitate\",\"../../../expression/stringtie/ref_only/palmitate4\"\n\"palmitate5\",\"palmitate\",\"../../../expression/stringtie/ref_only/palmitate5\"\n\" > control_vs_palmitate.csv
+> cat control_vs_palmitate.csv
+#R code part 1 here
+#Top 20 genes(most sgnificant)
+grep -v feature control_vs_palmitate_gene_results_sig.tsv | sort -k 4 | head -n 20
+
+#R code edgeR analysis here
+perl -ne 'if ($_ =~ /gene_id\s\"(ENSG\S+)\"\;/) { $id = $1; $name = undef; if ($_ =~ /gene_name\s\"(\S+)"\;/) { $name = $1; }; }; if ($id && $name) {print "$id\t$name\n";} if ($_=~/gene_id\s\"(ERCC\S+)\"/){print "$1\t$1\n";}' ../../refs/Homo_sapiens.GRCh38.99.gtf | sort | uniq > ENSG_ID2Name.txt
+
+#DE Visualization With Ballgown
+#R code part 2 here
+
+#DE Visualization Without Ballgown
+#R code part 3 here
+
+#Variation
+#Rnaseqmut
+cd $RNA_HOME
+git clone https://github.com/davidliwei/rnaseqmut/
+cp $RNA_HOME/rnaseqmut/bin/rnaseqmut.linux.x64 $RNA_HOME/student_tools/rnaseqmut/bin/rnaseqmut
+cd rnaseqmut/demo/data
+
+nano rnaseqmut/demo/rundemo.sh
+#modify rundemo.sh
+#echo "####### cleaning ##########"
+#if [ ! -d results ]; then
+#  mkdir results
+#fi
+#rm -rf results/.txt results/.vcf
+#for file in $BAMFILELIST; do
+ # filebase=`basename $file`
+ # CMD="rnaseqmut $file > results/$filebase.1st.txt"
+ # echo "#### COMMAND LINE: $CMD"
+ # eval $CMD
+#done
+list  ##########"
+CMD="merge1stfile results/*.1st.txt > results/ALLMUTLIST.txt"
+echo "#### COMMAND LINE: $CMD"
+eval $CMD
+Step 3 is mutation calling from the merged lists.
+for file in $BAMFILELIST; do
+  filebase=`basename $file`
+  CMD="rnaseqmut -l results/ALLMUTLIST.txt $file > results/$filebase.2nd.txt"
+  echo "#### COMMAND LINE: $CMD"
+  eval $CMD
+done
+CMD="python3 ~/workspace/rnaseq/rnaseqmut/script/merge2ndvcf.py -l $LABELS results/*.2nd.txt > results/ALLMUT.txt" 
+echo "#### COMMAND LINE: $CMD"
+eval $CMD
+# defining the two normal samples as control groups
+CONTROLGROUP="0,2,4,6,8"
+# the following command keep mutations that occur in at least 1 non-control sample with at least 10 alternative read support. 
+# By default, filtermut.py will only keep mutations that occur in at least 1 non-control sample (-t option) with 20% frequency (-f) and 10 alternative read support (-d) , excluding those that also occur in control samples (-a) or does not have enough read coverage in control samples (-b)
+CMD="python3 ~/workspace/rnaseq/rnaseqmut/script/filtermut.py -d 10 -f 0.0 -b 0 -c $CONTROLGROUP  -l $LABELS < results/ALLMUT.txt > results/ALLMUT_FILTERED.vcf"
+echo "#### COMMAND LINE: $CMD"
+eval $CMD
+
+#Annovar
+perl annotate_variation.pl -buildver hg38 -downdb -webfrom annovar refGene humandb/
+perl annotate_variation.pl -buildver hg38 -downdb cytoBand humandb/
+perl annotate_variation.pl -buildver hg38 -downdb genomicSuperDups humandb/ 
+perl annotate_variation.pl -buildver hg38 -downdb -webfrom annovar esp6500siv2_all humandb/
+perl annotate_variation.pl -buildver hg38 -downdb -webfrom annovar 1000g2015aug humandb/
+perl annotate_variation.pl -buildver hg38 -downdb -webfrom annovar exac03 humandb/ 
+perl annotate_variation.pl -buildver hg38 -downdb -webfrom annovar avsnp150 humandb/ 
+perl annotate_variation.pl -buildver hg38 -downdb -webfrom annovar dbnsfp30a humandb/
+perl annotate_variation.pl -buildver hg38 -downdb -webfrom annovar clinvar_20200316 humandb/
+perl annotate_variation.pl -buildver hg38 -downdb -webfrom annovar cosmic70 humandb/
+awk '{FS="\t";print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t.\t"$7}' ../rnaseqmut/demo/results/ALLMUT_FILTERED.vcf | tail -264 > ../rnaseqmut/demo/results/ALLMUT_FILTERED.filtercoladded.vcf
+perl table_annovar.pl  ../rnaseqmut/demo/results/ALLMUT_FILTERED.filtercoladded.vcf humandb/ -buildver hg38 -out myanno -remove -protocol refGene,cytoBand,genomicSuperDups,esp6500siv2_all,1000g2015aug_all,1000g2015aug_eur,exac03,avsnp150,dbnsfp30a,cosmic70,clinvar_20200316 -operation g,r,r,f,f,f,f,f,f,f,f -nastring . -vcfinput
+cp myanno.hg38_multianno.txt myanno.hg38_multianno.tsv
+libreoffice myanno.hg38_multianno.tsv
+
+
+
+
+
+
+
+
+
+
+
