@@ -218,8 +218,8 @@ abline(v=2, col="black", lwd=2, lty=2)
 legend("topleft", "Fold-change > 4", lwd=2, lty=2)
 
 #### Plot #10 - Display the grand expression values from control and palmitate and mark those that are significantly differentially expressed
-gene_expression[,"control"]=apply(gene_expression[,c(1:3)], 1, mean)
-gene_expression[,"palmitate"]=apply(gene_expression[,c(4:6)], 1, mean)
+gene_expression[,"control"]=apply(gene_expression[,c(1:5)], 1, mean)
+gene_expression[,"palmitate"]=apply(gene_expression[,c(6:10)], 1, mean)
 
 x=log2(gene_expression[,"control"]+min_nonzero)
 y=log2(gene_expression[,"palmitate"]+min_nonzero)
